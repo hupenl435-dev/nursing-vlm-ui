@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Camera,
+  Check,
   ChevronDown,
   ChevronLeft,
   CopyPlus,
@@ -9,7 +10,7 @@ import {
   Maximize2,
   Mic,
   PlusCircle,
-  RefreshCw,
+  Repeat2,
   Settings,
   Sparkles,
   Trash2,
@@ -20,74 +21,111 @@ import {
   X,
 } from 'lucide-react';
 
+const initialPhotos = [
+  {
+    id: 1,
+    url: 'https://images.unsplash.com/photo-1516549655169-df83a0774514?w=900&h=1600&fit=crop',
+    desc: '右側手臂傷口，範圍約 3 x 3 cm，周圍輕微泛紅。',
+  },
+  {
+    id: 2,
+    url: 'https://images.unsplash.com/photo-1505751172876-fa1923c5c528?w=900&h=1600&fit=crop',
+    desc: '換藥後狀態穩定，敷料完整，無明顯滲液。',
+  },
+];
+
 const App = () => {
   const [showPhotoGallery, setShowPhotoGallery] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [selectedPhoto, setSelectedPhoto] = useState(null);
   const [isVlmProcessing, setIsVlmProcessing] = useState(false);
-
-  // 護理紀錄文字內容
+  const [isSingleVlmProcessing, setIsSingleVlmProcessing] = useState(false);
+  const [isEditingPhotoDesc, setIsEditingPhotoDesc] = useState(false);
+  const [isPhotoDescExpanded, setIsPhotoDescExpanded] = useState(false);
+  const [photoDescDraft, setPhotoDescDraft] = useState('');
   const [recordText, setRecordText] = useState(
     '病人主訴傷口疼痛，已給予止痛藥 500mg，持續觀察生命徵象與傷口變化。'
   );
-
-  // 照片資料
-  const [photos, setPhotos] = useState([
-    {
-      id: 1,
-      url: 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=800&h=800&fit=crop',
-      desc: '右側手臂傷口，範圍約 3 x 3 cm，周圍輕微泛紅。',
-    },
-    {
-      id: 2,
-      url: 'https://images.unsplash.com/photo-1576091160550-2173dba999ef?w=800&h=800&fit=crop',
-      desc: '換藥後狀態穩定，敷料完整，無明顯滲液。',
-    },
-  ]);
-
-  // VLM 彙整結果
+  const [photos, setPhotos] = useState(initialPhotos);
   const [globalVlmText, setGlobalVlmText] = useState('');
 
+  useEffect(() => {
+    if (selectedPhoto) {
+      setPhotoDescDraft(selectedPhoto.desc);
+      setIsEditingPhotoDesc(false);
+      setIsPhotoDescExpanded(false);
+    }
+  }, [selectedPhoto]);
+
   const handleDeletePhoto = (id) => {
-    setPhotos(photos.filter((photo) => photo.id !== id));
+    setPhotos((prev) => prev.filter((photo) => photo.id !== id));
     setDeleteConfirm(null);
+
+    if (selectedPhoto?.id === id) {
+      setSelectedPhoto(null);
+    }
+  };
+
+  const updatePhotoDescription = (photoId, desc) => {
+    setPhotos((prev) => prev.map((photo) => (photo.id === photoId ? { ...photo, desc } : photo)));
+    setSelectedPhoto((prev) => (prev && prev.id === photoId ? { ...prev, desc } : prev));
   };
 
   const runGlobalVLM = () => {
     setIsVlmProcessing(true);
 
     setTimeout(() => {
-      const combined = photos.map((photo) => `[照片 ${photo.id}]: ${photo.desc}`).join('\n');
+      const combined = photos.map((photo) => `[照片 ${photo.id}] ${photo.desc}`).join('\n');
       setGlobalVlmText(`AI 影像彙整結果：\n${combined}`);
       setIsVlmProcessing(false);
     }, 1500);
+  };
+
+  const runSinglePhotoVLM = () => {
+    if (!selectedPhoto) {
+      return;
+    }
+
+    setIsSingleVlmProcessing(true);
+
+    setTimeout(() => {
+      const generatedDesc = `照片 ${selectedPhoto.id} 顯示傷口邊界清楚，局部輕度發紅，建議持續觀察滲液、紅腫與周邊皮膚變化。`;
+      setPhotoDescDraft(generatedDesc);
+      updatePhotoDescription(selectedPhoto.id, generatedDesc);
+      setIsEditingPhotoDesc(false);
+      setIsPhotoDescExpanded(false);
+      setIsSingleVlmProcessing(false);
+    }, 1200);
   };
 
   const appendToRecord = (text) => {
     setRecordText((prev) => `${prev}\n${text}`);
   };
 
+  const appendToRecordAndClosePhotos = (text) => {
+    appendToRecord(text);
+    setSelectedPhoto(null);
+    setShowPhotoGallery(false);
+  };
+
+  const confirmPhotoDescription = () => {
+    if (!selectedPhoto) {
+      return;
+    }
+
+    updatePhotoDescription(selectedPhoto.id, photoDescDraft);
+    setIsEditingPhotoDesc(false);
+  };
+
+  const displayPhotoDesc = selectedPhoto ? photoDescDraft : '';
+  const shouldShowMore = displayPhotoDesc.length > 28;
+
   return (
-    <div className="relative mx-auto flex h-screen max-w-[430px] flex-col overflow-hidden border-x border-slate-100 bg-white font-sans text-[#334155] shadow-2xl">
-      {/* 頂部資訊列 */}
+    <div className="relative mx-auto flex h-screen max-w-[430px] flex-col overflow-hidden border-x border-slate-100 bg-white font-sans text-slate-700 shadow-2xl">
       <header className="z-20 flex items-center justify-between bg-white px-4 py-4">
         <div className="flex items-center gap-2">
-          {/* 返回按鈕 */}
           <button className="-ml-1 p-1 text-slate-400">
             <ChevronLeft className="h-7 w-7" />
-          </button>
-
-          {/* 照片入口與數量 */}
-          <button
-            onClick={() => setShowPhotoGallery(true)}
-            className="relative rounded-2xl border border-blue-100 bg-blue-50 p-2.5 text-blue-500 shadow-sm transition-all active:scale-95"
-          >
-            <Camera className="h-5 w-5" />
-            {photos.length > 0 && (
-              <span className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full border-2 border-white bg-red-500 text-[10px] font-bold text-white">
-                {photos.length}
-              </span>
-            )}
           </button>
 
           <div className="ml-1 flex flex-col">
@@ -102,7 +140,7 @@ const App = () => {
 
         <div className="flex gap-2">
           <button className="flex items-center gap-1.5 rounded-full border border-slate-200 px-4 py-2 text-xs font-light text-slate-600">
-            <RefreshCw className="h-3.5 w-3.5" /> 重新整理
+            <Repeat2 className="h-3.5 w-3.5" /> 切換病人
           </button>
           <button className="rounded-2xl border border-slate-200 p-2.5 text-slate-400">
             <Settings className="h-5 w-5" />
@@ -110,7 +148,6 @@ const App = () => {
         </div>
       </header>
 
-      {/* 紀錄編輯區 */}
       <main className="relative flex flex-1 flex-col overflow-hidden px-4 py-2">
         <div className="mb-4 flex-1 overflow-y-auto rounded-[40px] border border-slate-100 bg-white p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
           <textarea
@@ -120,19 +157,32 @@ const App = () => {
           />
         </div>
 
-        {/* 底部操作列 */}
         <div className="pb-8">
-          <div className="relative flex h-20 items-center justify-between rounded-[32px] border border-slate-100 bg-[#F8FAFC] p-2 px-2 shadow-inner">
-            <div className="flex items-center gap-1.5">
-              <button className="rounded-2xl border border-slate-100 bg-white p-3 shadow-sm">
-                <div className="flex flex-col items-center">
-                  <FileText className="h-6 w-6 text-slate-300" />
-                  <ChevronDown className="-mt-0.5 h-3 w-3 text-slate-300" />
-                </div>
+          <div className="relative flex h-20 items-center justify-between rounded-[32px] border border-slate-100 bg-[#F8FAFC] p-2 shadow-inner">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowPhotoGallery(true)}
+                className="relative rounded-2xl border border-blue-100 bg-blue-50 p-3 text-blue-500 shadow-sm transition-all active:scale-95"
+              >
+                <Camera className="h-6 w-6" />
+                {photos.length > 0 && (
+                  <span className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full border-2 border-white bg-red-500 text-[10px] font-bold text-white">
+                    {photos.length}
+                  </span>
+                )}
               </button>
-              <button className="rounded-2xl border border-slate-100 bg-white p-3 shadow-sm">
-                <PlusCircle className="h-6 w-6 text-slate-300" />
-              </button>
+
+              <div className="flex items-center gap-1.5">
+                <button className="rounded-2xl border border-slate-100 bg-white p-3 shadow-sm">
+                  <div className="flex flex-col items-center">
+                    <FileText className="h-6 w-6 text-slate-300" />
+                    <ChevronDown className="-mt-0.5 h-3 w-3 text-slate-300" />
+                  </div>
+                </button>
+                <button className="rounded-2xl border border-slate-100 bg-white p-3 shadow-sm">
+                  <PlusCircle className="h-6 w-6 text-slate-300" />
+                </button>
+              </div>
             </div>
 
             <div className="flex items-center gap-1.5">
@@ -156,7 +206,6 @@ const App = () => {
         </div>
       </main>
 
-      {/* 照片總覽彈窗 */}
       {showPhotoGallery && (
         <div className="fixed inset-0 z-50 flex items-end justify-center px-4 pb-6">
           <div
@@ -166,9 +215,7 @@ const App = () => {
           <div className="relative flex max-h-[85vh] w-full max-w-[400px] flex-col overflow-hidden rounded-[48px] bg-white shadow-2xl animate-in slide-in-from-bottom duration-300">
             <div className="p-6">
               <div className="mb-6 flex items-center justify-between">
-                <div>
-                  <h3 className="text-xl font-semibold text-slate-800">照片總覽</h3>
-                </div>
+                <h3 className="text-xl font-semibold text-slate-800">照片總覽</h3>
                 <div className="flex gap-2">
                   <button
                     onClick={runGlobalVLM}
@@ -176,7 +223,7 @@ const App = () => {
                     className="flex items-center gap-1.5 rounded-2xl border border-indigo-100 bg-indigo-50 px-4 py-2 text-sm font-medium text-indigo-600 disabled:opacity-50"
                   >
                     {isVlmProcessing ? (
-                      <RefreshCw className="h-4 w-4 animate-spin" />
+                      <Repeat2 className="h-4 w-4 animate-spin" />
                     ) : (
                       <Wand2 className="h-4 w-4" />
                     )}
@@ -192,16 +239,16 @@ const App = () => {
               </div>
 
               {globalVlmText && (
-                <div className="relative mb-6 rounded-3xl border border-slate-100 bg-slate-50 p-4 group">
+                <div className="relative mb-6 rounded-3xl border border-slate-100 bg-slate-50 p-4">
                   <div className="mb-2 flex items-start justify-between">
                     <span className="flex items-center gap-1 text-xs font-bold text-indigo-500">
                       <Wand2 className="h-3 w-3" /> AI 建議摘要
                     </span>
                     <button
-                      onClick={() => appendToRecord(globalVlmText)}
+                      onClick={() => appendToRecordAndClosePhotos(globalVlmText)}
                       className="rounded-full bg-indigo-500 px-2 py-0.5 text-[11px] text-white shadow-sm"
                     >
-                      加入紀錄
+                      帶入紀錄
                     </button>
                   </div>
                   <textarea
@@ -244,74 +291,100 @@ const App = () => {
         </div>
       )}
 
-      {/* 單張照片詳情 */}
       {selectedPhoto && (
-        <div className="fixed inset-0 z-[70] flex flex-col bg-black animate-in fade-in duration-200">
-          <div className="z-10 flex items-center justify-between p-4">
-            <button
-              onClick={() => setSelectedPhoto(null)}
-              className="rounded-full bg-white/10 p-2 text-white backdrop-blur-md"
-            >
-              <X className="h-6 w-6" />
-            </button>
-            <div className="flex gap-3">
-              <button className="flex items-center gap-2 rounded-full bg-white/10 px-4 py-2 text-sm text-white backdrop-blur-md">
-                <Wand2 className="h-4 w-4" /> VLM 分析圖片
-              </button>
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/35 px-4 py-6 backdrop-blur-[2px] animate-in fade-in duration-200">
+          <div className="relative flex h-full w-full max-w-[430px] flex-col overflow-hidden rounded-[38px] bg-black shadow-[0_30px_80px_rgba(15,23,42,0.45)]">
+            <div className="absolute inset-x-0 top-0 z-20 flex items-center justify-between px-4 pb-3 pt-4">
               <button
-                onClick={() => {
-                  appendToRecord(selectedPhoto.desc);
-                  setSelectedPhoto(null);
-                }}
-                className="flex items-center gap-2 rounded-full bg-blue-500 px-4 py-2 text-sm text-white shadow-lg shadow-blue-500/20"
+                onClick={() => setSelectedPhoto(null)}
+                className="rounded-full bg-black/45 p-2 text-white backdrop-blur-md"
               >
-                <CopyPlus className="h-4 w-4" /> 加入紀錄
+                <X className="h-6 w-6" />
               </button>
-            </div>
-          </div>
 
-          <div className="flex flex-1 items-center justify-center px-2">
-            <img
-              src={selectedPhoto.url}
-              alt="full"
-              className="max-h-[70vh] max-w-full rounded-lg object-contain"
-            />
-          </div>
-
-          <div className="bg-gradient-to-t from-black/90 via-black/70 to-transparent p-6 pb-12">
-            <div className="mx-auto max-w-[430px]">
-              <div className="mb-4 flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-700">
-                  <User className="h-5 w-5 text-slate-400" />
-                </div>
-                <div>
-                  <div className="font-bold text-white">護理照片描述</div>
-                  <div className="text-xs text-white/50">2026/05/08 10:26</div>
-                </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={runSinglePhotoVLM}
+                  disabled={isSingleVlmProcessing}
+                  className="flex items-center gap-2 rounded-full bg-black/45 px-4 py-2 text-sm text-white backdrop-blur-md disabled:opacity-50"
+                >
+                  {isSingleVlmProcessing ? (
+                    <Repeat2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Wand2 className="h-4 w-4" />
+                  )}
+                  單張圖片 VLM
+                </button>
+                <button
+                  onClick={() => appendToRecordAndClosePhotos(selectedPhoto.desc)}
+                  disabled={isEditingPhotoDesc}
+                  className="flex items-center gap-2 rounded-full bg-blue-500 px-4 py-2 text-sm text-white shadow-lg shadow-blue-500/20 disabled:opacity-50"
+                >
+                  <CopyPlus className="h-4 w-4" /> 帶入紀錄
+                </button>
               </div>
-              <div className="group relative">
-                <textarea
-                  className="w-full resize-none rounded-lg border-none bg-transparent p-2 text-base leading-relaxed text-white outline-none transition-all focus:bg-white/5"
-                  rows="3"
-                  value={selectedPhoto.desc}
-                  onChange={(e) => {
-                    const newPhotos = photos.map((photo) =>
-                      photo.id === selectedPhoto.id ? { ...photo, desc: e.target.value } : photo
-                    );
-                    setPhotos(newPhotos);
-                    setSelectedPhoto({ ...selectedPhoto, desc: e.target.value });
-                  }}
+            </div>
+
+            <div className="relative flex-1 overflow-auto bg-slate-950 [touch-action:pinch-zoom]">
+              <div className="flex h-full w-full items-center justify-center">
+                <img
+                  src={selectedPhoto.url}
+                  alt="full"
+                  className="max-h-full w-full object-contain"
                 />
-                <div className="pointer-events-none absolute right-2 top-2 opacity-30 transition-opacity group-hover:opacity-100">
-                  <Edit3 className="h-4 w-4 text-white" />
+              </div>
+
+              <div className="absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/95 via-black/82 to-transparent px-5 pb-6 pt-16">
+                <div className="mb-3 flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10">
+                    <User className="h-5 w-5 text-white/75" />
+                  </div>
+                  <div>
+                    <div className="font-bold text-white">護理照護描述</div>
+                    <div className="text-xs text-white/60">2026/05/08 10:26</div>
+                  </div>
                 </div>
+
+                {isEditingPhotoDesc ? (
+                  <div className="relative">
+                    <textarea
+                      className="w-full resize-none rounded-2xl border border-white/10 bg-black/45 p-3 pr-12 text-sm leading-relaxed text-white outline-none placeholder:text-white/40"
+                      rows="4"
+                      value={photoDescDraft}
+                      onChange={(e) => setPhotoDescDraft(e.target.value)}
+                    />
+                    <button
+                      onClick={confirmPhotoDescription}
+                      className="absolute right-3 top-3 rounded-full bg-emerald-500 p-1.5 text-white shadow-lg shadow-emerald-500/20"
+                    >
+                      <Check className="h-4 w-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="relative rounded-2xl bg-black/45 px-4 py-3 pr-12 text-sm leading-relaxed text-white">
+                    <p className={isPhotoDescExpanded ? '' : 'truncate'}>{displayPhotoDesc}</p>
+                    {shouldShowMore && (
+                      <button
+                        onClick={() => setIsPhotoDescExpanded((prev) => !prev)}
+                        className="mt-1 text-xs font-medium text-white/75"
+                      >
+                        {isPhotoDescExpanded ? '收合' : '...更多'}
+                      </button>
+                    )}
+                    <button
+                      onClick={() => setIsEditingPhotoDesc(true)}
+                      className="absolute right-3 top-3 rounded-full bg-white/10 p-1.5 text-white/80"
+                    >
+                      <Edit3 className="h-4 w-4" />
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* 刪除確認彈窗 */}
       {deleteConfirm && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center px-8">
           <div
